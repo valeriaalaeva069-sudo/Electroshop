@@ -16,8 +16,8 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-only-change-me')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=lambda v: [h.strip() for h in v.split(',') if h.strip()])
-CSRF_TRUSTED_ORIGINS = ["https://electroshop-12vi.onrender.com"]
+ALLOWED_HOSTS = ["*"]
+CSRF_TRUSTED_ORIGINS = ["https://electroshop-12vi.onrender.com",  "https://*.pythonanywhere.com"]
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Application definition
 INSTALLED_APPS = [
