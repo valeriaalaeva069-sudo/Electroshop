@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Оформление заказа — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="page-title">
+        <i class="fas fa-credit-card"></i> Оформление заказа
+    </h1>
+    
+    <div id="checkoutContent">
+        <div class="loading">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p>Загрузка корзины...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+let cartData = null;
+
+// ============================================
+// ЗАГРУЗКА СТРАНИЦЫ ОФОРМЛЕНИЯ
+// ============================================
+
+async function loadCheckout() {
+    const container = document.getElementById('checkoutContent');
+
+    // Проверка авторизации
+    if (!isAuthenticated()) {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-user-lock fa-5x"></i>
+                <h2>Войдите в систему</h2>
+                <p>Чтобы оформить заказ, нужно войти</p>
+                <a href="/login/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    <i class="fas fa-sign-in-alt"></i> Войти
+                </a>
+            </div>
+        `;
+        return;
+    }
+
+    // Загрузка корзины
+    const result = await apiRequest('/cart/');
+
+    if (!result || !result.ok) {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-exclamation-triangle fa-5x"></i>
+                <h2>Ошибка загрузки</h2>
+                <p>Не удалось получить данные корзины</p>
+                <a href="/cart/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    <i class="fas fa-shopping-cart"></i> Вернуться в корзину
+                </a>
+            </div>
+        `;
+        return;
+    }
+
+    // Проверка, что корзина не пуста
+    if (!result.data.items || result.data.items.length === 0) {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-shopping-cart fa-5x"></i>
+                <h2>Корзина пуста</h2>
+                <p>Добавьте товары из каталога, чтобы оформить заказ</p>
+                <a href="/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    <i class="fas fa-shopping-bag"></i> Перейти в каталог
+                </a>
+            </div>
+        `;
+        return;
+    }
+
+    cartData = result.data;
+    const user = getUser() || {};
+
+    // Формируем HTML
+    container.innerHTML = `
+        <div class="checkout-layout">
+            <div>
+                <!-- ========== ВЫБОР ТОВАРОВ ========== -->
+                <div class="checkout-section">
+                    <h2><i class="fas fa-box"></i> Выберите товары для заказа</h2>
+
+                    <label style="display:flex;align-items:center;gap:10px;margin-bottom:15px;cursor:pointer;font-weight:bold;padding:10px;background:#f8f9fa;border-radius:5px;">
+                        <input type="checkbox" id="selectAll" checked onchange="toggleSelectAll(this)" style="width:18px;height:18px;cursor:pointer;">
+                        <span>Выбрать все товары (${Number(cartData.items.length)})</span>
+                    </label>
+
+                    <div id="itemsList">
+                        ${cartData.items.map(item => `
+                            <div class="checkout-item">
+                                <input type="checkbox" class="item-checkbox" value="${Number(item.id)}"
+                                       data-subtotal="${esc(item.subtotal)}" data-quantity="${Number(item.quantity)}"
+                                       checked onchange="updateTotal()"
+                                       style="width:18px;height:18px;cursor:pointer;">
+                                <span class="checkout-item-name">${esc(item.product.name)}</span>
+                                <span class="checkout-item-qty">× ${Number(item.quantity)}</span>
+                                <span class="checkout-item-price">${parseFloat(item.subtotal).toLocaleString('ru-RU')} ₽</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- ========== АДРЕС ДОСТАВКИ ========== -->
+                <div class="checkout-section">
+                    <h2><i class="fas fa-map-marker-alt"></i> Адрес доставки</h2>
+
+                    <div class="form-group">
+                        <label>Город *</label>
+                        <input type="text" id="city" value="${esc(user.city || '')}" required placeholder="Москва">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Адрес (улица, дом, квартира) *</label>
+                        <input type="text" id="address" required placeholder="ул. Ленина, д. 1, кв. 10">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Почтовый индекс</label>
+                        <input type="text" id="postal_code" placeholder="123456">
+                    </div>
+                </div>
+
+                <!-- ========== СПОСОБ ДОСТАВКИ ========== -->
+                <div class="checkout-section">
+                    <h2><i class="fas fa-truck"></i> Способ доставки</h2>
+
+                    <div class="delivery-option">
+                        <label>
+                            <input type="radio" name="delivery" value="pickup" onchange="updateTotal()">
+                            <div>
+                                <b>Самовывоз</b>
+                                <span style="color:#27ae60;font-weight:bold;">бесплатно</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="delivery-option">
+                        <label>
+                            <input type="radio" name="delivery" value="courier" checked onchange="updateTotal()">
+                            <div>
+                                <b>Курьером</b>
+                                <span>500 ₽ (бесплатно от 10 000 ₽)</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="delivery-option">
+                        <label>
+                            <input type="radio" name="delivery" value="post" onchange="updateTotal()">
+                            <div>
+                                <b>Почтой России</b>
+                                <span>300 ₽</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ========== СПОСОБ ОПЛАТЫ ========== -->
+                <div class="checkout-section">
+                    <h2><i class="fas fa-wallet"></i> Способ оплаты</h2>
+
+                    <div class="payment-option">
+                        <label>
+                            <input type="radio" name="payment" value="card" checked>
+                            <div>
+                                <b><i class="fas fa-credit-card"></i> Картой онлайн</b>
+                                <span>Безопасная оплата через платёжный шлюз</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="payment-option">
+                        <label>
+                            <input type="radio" name="payment" value="cash">
+                            <div>
+                                <b><i class="fas fa-money-bill-wave"></i> Наличными при получении</b>
+                                <span>Оплата курьеру</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="payment-option">
+                        <label>
+                            <input type="radio" name="payment" value="card_delivery">
+                            <div>
+                                <b><i class="fas fa-credit-card"></i> Картой курьеру</b>
+                                <span>Оплата при получении</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ========== КОММЕНТАРИЙ ========== -->
+                <div class="checkout-section">
+                    <h2><i class="fas fa-comment"></i> Комментарий к заказу</h2>
+                    <div class="form-group">
+                        <textarea id="comment" rows="3" placeholder="Например: позвонить за час до доставки"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== СВОДКА ЗАКАЗА ========== -->
+            <div class="cart-summary">
+                <h3>Ваш заказ</h3>
+
+                <div class="summary-row">
+                    <span>Выбрано товаров:</span>
+                    <span id="summaryCount">0 шт.</span>
+                </div>
+
+                <div class="summary-row">
+                    <span>Сумма товаров:</span>
+                    <span id="summaryItems">0 ₽</span>
+                </div>
+
+                <div class="summary-row">
+                    <span>Стоимость доставки:</span>
+                    <span id="summaryDelivery">0 ₽</span>
+                </div>
+
+                <div class="summary-row total">
+                    <span>Итого к оплате:</span>
+                    <span id="summaryTotal">0 ₽</span>
+                </div>
+
+                <button class="btn-primary" onclick="submitOrder()" style="margin-top:20px;">
+                    <i class="fas fa-check-circle"></i> Подтвердить заказ
+                </button>
+
+                <a href="/cart/" style="display:block;text-align:center;margin-top:15px;color:#95a5a6;font-size:13px;text-decoration:none;">
+                    <i class="fas fa-arrow-left"></i> Вернуться в корзину
+                </a>
+            </div>
+        </div>
+    `;
+
+    updateTotal();
+}
+
+// ============================================
+// ВЫБРАТЬ ВСЕ ТОВАРЫ
+// ============================================
+
+function toggleSelectAll(checkbox) {
+    document.querySelectorAll('.item-checkbox').forEach(cb => {
+        cb.checked = checkbox.checked;
+    });
+    updateTotal();
+}
+
+// ============================================
+// ПЕРЕСЧЁТ ИТОГОВОЙ СУММЫ
+// ============================================
+
+function updateTotal() {
+    const selectedItems = Array.from(document.querySelectorAll('.item-checkbox:checked'));
+    const allItems = document.querySelectorAll('.item-checkbox');
+    const deliveryMethod = document.querySelector('input[name="delivery"]:checked')?.value || 'courier';
+
+    // Обновляем чекбокс "Выбрать все"
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll) {
+        selectAll.checked = selectedItems.length === allItems.length && allItems.length > 0;
+        selectAll.indeterminate = selectedItems.length > 0 && selectedItems.length < allItems.length;
+    }
+
+    let itemsSum = 0;
+    let count = 0;
+
+    selectedItems.forEach(cb => {
+        const subtotal = parseFloat(cb.dataset.subtotal) || 0;
+        const quantity = parseInt(cb.dataset.quantity) || 0;
+        itemsSum += subtotal;
+        count += quantity;
+    });
+
+    // Расчёт доставки
+    let deliveryCost = 0;
+    if (deliveryMethod === 'courier') {
+        deliveryCost = itemsSum >= 10000 ? 0 : 500;
+    } else if (deliveryMethod === 'post') {
+        deliveryCost = 300;
+    }
+    // pickup = 0
+
+    // Обновляем отображение
+    document.getElementById('summaryCount').textContent = `${count} шт.`;
+    document.getElementById('summaryItems').textContent = `${itemsSum.toLocaleString('ru-RU')} ₽`;
+    document.getElementById('summaryDelivery').textContent =
+        deliveryCost === 0 ? 'бесплатно' : `${deliveryCost.toLocaleString('ru-RU')} ₽`;
+    document.getElementById('summaryTotal').textContent =
+        `${(itemsSum + deliveryCost).toLocaleString('ru-RU')} ₽`;
+
+    return {
+        itemsSum,
+        deliveryCost,
+        total: itemsSum + deliveryCost,
+        itemIds: selectedItems.map(cb => parseInt(cb.value)),
+    };
+}
+
+// ============================================
+// ОТПРАВКА ЗАКАЗА
+// ============================================
+
+async function submitOrder() {
+    const city = document.getElementById('city').value.trim();
+    const address = document.getElementById('address').value.trim();
+    const postalCode = document.getElementById('postal_code').value.trim();
+    const comment = document.getElementById('comment').value.trim();
+
+    // Валидация
+    if (!city) {
+        showToast('Ошибка', 'Укажите город', 'error');
+        document.getElementById('city').focus();
+        return;
+    }
+
+    if (!address) {
+        showToast('Ошибка', 'Укажите адрес доставки', 'error');
+        document.getElementById('address').focus();
+        return;
+    }
+
+    // сумма здесь только для подтверждения — итог и доставку считает сервер
+    const { itemIds, total } = updateTotal();
+
+    if (itemIds.length === 0) {
+        showToast('Ошибка', 'Выберите хотя бы один товар', 'error');
+        return;
+    }
+
+    const deliveryMethod = document.querySelector('input[name="delivery"]:checked').value;
+    const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
+
+    // Подтверждение
+    showConfirm(
+        `Оформить заказ на сумму ${total.toLocaleString('ru-RU')} ₽?`,
+        async () => {
+            const result = await apiRequest('/orders/create/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    city: city,
+                    address: address,
+                    postal_code: postalCode,
+                    delivery_method: deliveryMethod,
+                    payment_method: paymentMethod,
+                    comment: comment,
+                    items: itemIds,
+                }),
+            });
+
+            if (result && result.ok) {
+                showToast('Успешно!', `Заказ № ${result.data.order_number} оформлен!`, 'success');
+                updateCartBadge();
+
+                const orderId = result.data.id;
+
+                setTimeout(() => {
+                    if (paymentMethod === 'card') {
+                        // Редирект на оплату
+                        window.location.href = `/payment/${orderId}/`;
+                    } else {
+                        // Редирект на страницу успеха
+                        window.location.href = `/order-success/${orderId}/`;
+                    }
+                }, 1000);
+            } else {
+                const error = result?.data?.error
+                    || result?.data?.non_field_errors?.[0]
+                    || 'Не удалось оформить заказ';
+                showToast('Ошибка оформления', error, 'error');
+            }
+        },
+        'Подтверждение заказа'
+    );
+}
+
+// ============================================
+// ИНИЦИАЛИЗАЦИЯ
+// ============================================
+
+document.addEventListener('DOMContentLoaded', loadCheckout);
+</script>
+
+<style>
+/* Стили для опций доставки и оплаты */
+.delivery-option,
+.payment-option {
+    margin-bottom: 10px;
+}
+
+.delivery-option label,
+.payment-option label {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    border: 2px solid #ecf0f1;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.delivery-option label:hover,
+.payment-option label:hover {
+    border-color: #3498db;
+    background: #f0f8ff;
+}
+
+.delivery-option input:checked + div,
+.payment-option input:checked + div {
+    color: #3498db;
+}
+
+.delivery-option input[type="radio"],
+.payment-option input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.delivery-option label > div,
+.payment-option label > div {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.delivery-option span,
+.payment-option span {
+    font-size: 13px;
+    color: #95a5a6;
+}
+
+.checkout-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px 0;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.checkout-item:last-child {
+    border-bottom: none;
+}
+
+.checkout-item-name {
+    flex: 1;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.checkout-item-qty {
+    color: #95a5a6;
+    font-size: 14px;
+    min-width: 50px;
+    text-align: center;
+}
+
+.checkout-item-price {
+    font-weight: bold;
+    color: #e74c3c;
+    min-width: 100px;
+    text-align: right;
+}
+</style>
+{% endblock %}

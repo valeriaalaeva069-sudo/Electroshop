@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Каталог товаров — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- Бенто-плитки: показываются только на чистой главной -->
+    <section class="bento-hero" id="bentoHero" hidden></section>
+
+    <div class="catalog-header" id="catalogHeader">
+        <h1 id="catalogTitle">Все товары</h1>
+        <p id="catalogCount" class="text-muted">Загрузка...</p>
+    </div>
+
+    <!-- Подкатегории выбранной категории -->
+    <div id="subcats" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
+
+    <!-- Панель фильтров -->
+    <div id="filtersContainer"></div>
+
+    <!-- Сетка товаров -->
+    <div class="products-grid" id="productsGrid">
+        <div class="loading">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p>Загрузка товаров...</p>
+        </div>
+    </div>
+
+    <!-- Пагинация -->
+    <div class="pagination" id="pagination"></div>
+
+    <div class="bento-banner" id="bentoBanner" hidden>
+        <div>
+            <h3>Не знаете, что выбрать?</h3>
+            <p>Отфильтруйте каталог по характеристикам — покажем только подходящее.</p>
+        </div>
+        <a href="#productsGrid">К каталогу</a>
+    </div>
+
+</div>
+
+<script>
+// ============================================
+// ЗАГРУЗКА ТОВАРОВ
+// ============================================
+
+// esc() — общая функция экранирования из static/js/main.js
+
+const PAGE_SIZE = 20;
+
+function getPage() {
+    const p = parseInt(new URLSearchParams(window.location.search).get('page'), 10);
+    return p > 0 ? p : 1;
+}
+
+function isPlainHome() {
+    const q = new URLSearchParams(window.location.search);
+    return ![...q.keys()].some(k => k === 'category' && q.get(k) || k === 'search' || k.startsWith('attr_') || ['brand_slug','price_min','price_max','in_stock','ordering'].includes(k));
+}
+
+async function loadProducts() {
+    const grid = document.getElementById('productsGrid');
+    const urlParams = new URLSearchParams(window.location.search);
+    const categorySlug = urlParams.get('category');
+    const searchQuery = urlParams.get('search');
+    const page = getPage();
+
+    const params = new URLSearchParams();
+    if (categorySlug) params.append('category_slug', categorySlug);
+    if (searchQuery) params.append('search', searchQuery);
+    if (page > 1) params.append('page', page);
+    for (const [key, value] of urlParams.entries()) {
+        if (key.startsWith('attr_') || ['brand_slug', 'price_min', 'price_max', 'in_stock', 'ordering'].includes(key)) {
+            params.append(key, value);
+        }
+    }
+
+    const endpoint = '/products/' + (params.toString() ? `?${params}` : '');
+    const result = await apiRequest(endpoint);
+
+    if (!result || !result.ok) {
+        grid.innerHTML = '<div class="empty-state">Не получилось загрузить товары. Попробуй обновить страницу.</div>';
+        return;
+    }
+
+    const products = result.data.results || result.data;
+    const count = result.data.count != null ? result.data.count : products.length;
+
+    document.getElementById('catalogCount').textContent = `Найдено товаров: ${count}`;
+
+    const title = document.getElementById('catalogTitle');
+    if (searchQuery) {
+        title.textContent = `Поиск: ${searchQuery}`;
+    } else if (categorySlug) {
+        const catResult = await apiRequest(`/categories/${encodeURIComponent(categorySlug)}/`);
+        if (catResult && catResult.ok) title.textContent = catResult.data.name;
+    } else {
+        title.textContent = 'Новинки и хиты';
+    }
+
+    if (products.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><i class="fas fa-box-open fa-2x"></i><p class="mt-3 mb-0">Ничего не нашлось</p></div>';
+        renderPagination(0, 1);
+        return;
+    }
+
+    grid.innerHTML = products.map(product => `
+        <div class="product-card" data-slug="${esc(product.slug)}">
+            <div class="product-image">
+                ${product.main_image_url
+                    ? `<img src="${esc(product.main_image_url)}" alt="${esc(product.name)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">`
+                    : '<i class="fas fa-image"></i>'}
+            </div>
+            <div class="product-card-body">
+                <div class="product-brand">${esc(product.brand_name)}</div>
+                <div class="product-name">${esc(product.name)}</div>
+                <div class="product-price">${parseFloat(product.price).toLocaleString('ru-RU')} ₽</div>
+                <div class="product-actions">
+                    <button type="button" class="btn-add-cart"
+                            data-id="${Number(product.id)}" data-name="${esc(product.name)}"
+                            ${!product.in_stock ? 'disabled' : ''}>
+                        <i class="fas fa-cart-plus"></i>
+                        ${product.in_stock ? (isAuthenticated() ? 'В корзину' : 'Войти, чтобы купить') : 'Нет в наличии'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    renderPagination(count, page);
+}
+
+// Один обработчик на всю сетку вместо onclick в каждой карточке
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#productsGrid .btn-add-cart');
+    if (btn) {
+        e.stopPropagation();
+        if (!btn.disabled) addToCart(Number(btn.dataset.id), 1, btn.dataset.name);
+        return;
+    }
+    const card = e.target.closest('#productsGrid .product-card');
+    if (card && card.dataset.slug) {
+        window.location.href = `/product/${encodeURIComponent(card.dataset.slug)}/`;
+    }
+});
+
+function goToPage(n) {
+    const q = new URLSearchParams(window.location.search);
+    if (n > 1) q.set('page', n); else q.delete('page');
+    window.location.href = `/?${q.toString()}`;
+}
+
+function renderPagination(count, page) {
+    const box = document.getElementById('pagination');
+    const pages = Math.ceil(count / PAGE_SIZE);
+    if (pages <= 1) { box.innerHTML = ''; return; }
+
+    const items = [];
+    const from = Math.max(1, page - 2), to = Math.min(pages, page + 2);
+    items.push(`<button type="button" ${page === 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})" aria-label="Назад"><i class="fas fa-chevron-left"></i></button>`);
+    if (from > 1) items.push(`<button type="button" onclick="goToPage(1)">1</button>`);
+    if (from > 2) items.push('<button type="button" disabled>…</button>');
+    for (let i = from; i <= to; i++) {
+        items.push(`<button type="button" class="${i === page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`);
+    }
+    if (to < pages - 1) items.push('<button type="button" disabled>…</button>');
+    if (to < pages) items.push(`<button type="button" onclick="goToPage(${pages})">${pages}</button>`);
+    items.push(`<button type="button" ${page === pages ? 'disabled' : ''} onclick="goToPage(${page + 1})" aria-label="Вперёд"><i class="fas fa-chevron-right"></i></button>`);
+    box.innerHTML = items.join('');
+}
+
+// ============================================
+// БЕНТО-ПЛИТКИ ИЗ КАТЕГОРИЙ
+// ============================================
+
+const TILE_ICONS = [
+    [/смартфон|телефон|phone/i, 'fa-mobile-screen'],
+    [/ноутбук|laptop/i, 'fa-laptop'],
+    [/наушник|headphone|аудио/i, 'fa-headphones'],
+    [/час|watch/i, 'fa-clock'],
+    [/игр|консол|game/i, 'fa-gamepad'],
+    [/монитор|телевиз|tv/i, 'fa-tv'],
+    [/аксессуар|кабел|зарядк/i, 'fa-plug'],
+    [/план|tablet/i, 'fa-tablet-screen-button'],
+    [/камер|фото/i, 'fa-camera'],
+];
+
+function tileIcon(name) {
+    const hit = TILE_ICONS.find(([re]) => re.test(name));
+    return hit ? hit[1] : 'fa-microchip';
+}
+
+function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+    return many;
+}
+
+function renderBento(categories) {
+    const hero = document.getElementById('bentoHero');
+    if (!hero || !isPlainHome()) return;
+
+    // на главной только корневые категории; подкатегории открываются внутри них
+    const list = categories.filter(c => !c.parent).slice(0, 9);
+    if (!list.length) return;
+
+    hero.innerHTML = list.map((c, i) => {
+        const n = c.products_count || 0;
+        return `
+            <a class="tile t${i}" href="/?category=${encodeURIComponent(c.slug)}">
+                <div class="tile-top">
+                    <span class="tile-icon"><i class="fas ${tileIcon(c.name)}"></i></span>
+                    <span class="tile-count">${n} ${plural(n, 'товар', 'товара', 'товаров')}</span>
+                </div>
+                <div>
+                    <div class="tile-name">${esc(c.name)}</div>
+                    <div class="tile-sub">Смотреть <i class="fas fa-arrow-right"></i></div>
+                </div>
+                <i class="fas ${tileIcon(c.name)} tile-bigicon"></i>
+            </a>`;
+    }).join('');
+    hero.hidden = false;
+}
+
+document.addEventListener('categories:loaded', (e) => renderBento(e.detail));
+
+// Подкатегории: у «Аксессуаров» — мыши, клавиатуры, наушники, чехлы;
+// внутри подкатегории — её соседи и ссылка на родителя
+function renderSubcats(categories) {
+    const box = document.getElementById('subcats');
+    const slug = new URLSearchParams(window.location.search).get('category');
+    if (!box || !slug) return;
+
+    const all = categories.flatMap(c => [c, ...(c.children || [])]);
+    const node = all.find(c => c.slug === slug);
+    if (!node) return;
+
+    let parent = null, items = [];
+    if (node.children && node.children.length) {
+        parent = node;
+        items = node.children;
+    } else if (node.parent) {
+        parent = all.find(c => c.id === node.parent);
+        items = parent ? parent.children : [];
+    }
+    if (!parent || !items.length) return;
+
+    const chip = (c, label, active) => `
+        <a class="category-link${active ? ' active' : ''}" href="/?category=${encodeURIComponent(c.slug)}">${esc(label)}</a>`;
+    box.innerHTML = chip(parent, `Всё: ${parent.name}`, parent.slug === slug)
+        + items.map(c => chip(c, c.name, c.slug === slug)).join('');
+}
+document.addEventListener('categories:loaded', (e) => renderSubcats(e.detail));
+
+// ============================================
+// ФИЛЬТРЫ ПО АТРИБУТАМ КАТЕГОРИИ — панель сверху с выпадающими списками
+// ============================================
+
+function getSelectedAttrParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const selected = {};
+    for (const key of urlParams.keys()) {
+        if (key.startsWith('attr_')) {
+            selected[key] = urlParams.getAll(key);
+        }
+    }
+    return selected;
+}
+
+const EXTRA_FILTER_KEYS = ['price_min', 'price_max', 'in_stock'];
+
+async function loadFilters() {
+    const container = document.getElementById('filtersContainer');
+    const urlParams = new URLSearchParams(window.location.search);
+    const categorySlug = urlParams.get('category');
+
+    // Панель показываем только внутри категории
+    if (!categorySlug) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const [attrRes, facetRes] = await Promise.all([
+        apiRequest(`/categories/${encodeURIComponent(categorySlug)}/filters/`),
+        apiRequest(`/products/facets/?category_slug=${encodeURIComponent(categorySlug)}`),
+    ]);
+    const attrs = attrRes && attrRes.ok ? attrRes.data : [];
+    const facets = facetRes && facetRes.ok ? facetRes.data : null;
+
+    const selected = getSelectedAttrParams();
+    const selectedBrands = urlParams.getAll('brand_slug');
+    const priceMin = urlParams.get('price_min') || '';
+    const priceMax = urlParams.get('price_max') || '';
+    const inStock = urlParams.get('in_stock') === 'true';
+    const ordering = urlParams.get('ordering') || '';
+
+    const chips = [];
+    attrs.forEach(attr => {
+        const ids = selected[`attr_${attr.slug}`] || [];
+        attr.values.forEach(v => {
+            if (ids.includes(String(v.id))) {
+                chips.push({ label: `${attr.name}: ${v.value}`, key: `attr_${attr.slug}`, value: String(v.id) });
+            }
+        });
+    });
+    if (facets) {
+        facets.brands.forEach(b => {
+            if (selectedBrands.includes(b.slug)) chips.push({ label: `Бренд: ${b.name}`, key: 'brand_slug', value: b.slug });
+        });
+    }
+    if (priceMin || priceMax) {
+        const txt = `Цена: ${priceMin ? 'от ' + Number(priceMin).toLocaleString('ru-RU') : ''}${priceMin && priceMax ? ' ' : ''}${priceMax ? 'до ' + Number(priceMax).toLocaleString('ru-RU') : ''} ₽`;
+        chips.push({ label: txt, key: 'price', value: '' });
+    }
+    if (inStock) chips.push({ label: 'Только в наличии', key: 'in_stock', value: '' });
+
+    const dropdown = (title, count, inner) => `
+        <div class="filter-dropdown">
+            <button type="button" class="filter-dropdown-btn${count ? ' active' : ''}" onclick="toggleDropdown(this)">
+                <span>${esc(title)}</span>
+                ${count ? `<span class="filter-count-badge">${count}</span>` : ''}
+                <i class="fas fa-chevron-down"></i>
+            </button>
+            <div class="filter-dropdown-panel">${inner}</div>
+        </div>`;
+
+    const checkOption = (dataAttr, dataVal, value, label, count, checked) => `
+        <label class="filter-option">
+            <input type="checkbox" ${dataAttr}="${esc(dataVal)}" value="${esc(String(value))}" ${checked ? 'checked' : ''} onchange="applyFilters()">
+            <span class="filter-option-label">${esc(label)}</span>
+            <span class="filter-option-count">${count}</span>
+        </label>`;
+
+    let html = '';
+
+    // Бренд
+    if (facets && facets.brands.length > 1) {
+        html += dropdown('Бренд', selectedBrands.length, facets.brands.map(b =>
+            checkOption('data-brand', b.slug, b.slug, b.name, b.count, selectedBrands.includes(b.slug))).join(''));
+    }
+
+    // Цена
+    if (facets && facets.price.max > 0) {
+        const priceInner = `
+            <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-width:220px">
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input type="number" id="fPriceMin" min="0" placeholder="от ${facets.price.min}" value="${esc(priceMin)}" style="width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:8px">
+                    <span>–</span>
+                    <input type="number" id="fPriceMax" min="0" placeholder="до ${facets.price.max}" value="${esc(priceMax)}" style="width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:8px">
+                </div>
+                <button type="button" class="btn-add-cart" style="padding:8px 12px !important" onclick="applyFilters()">Применить</button>
+            </div>`;
+        html += dropdown('Цена', (priceMin || priceMax) ? 1 : 0, priceInner);
+    }
+
+    // Характеристики категории
+    attrs.forEach(attr => {
+        const ids = selected[`attr_${attr.slug}`] || [];
+        html += dropdown(attr.name, ids.length, attr.values.map(v =>
+            checkOption('data-attr', attr.slug, v.id, v.value, v.count, ids.includes(String(v.id)))).join(''));
+    });
+
+    // В наличии и сортировка
+    html += `
+        <label class="filter-dropdown-btn${inStock ? ' active' : ''}" style="cursor:pointer;display:inline-flex;gap:8px;align-items:center">
+            <input type="checkbox" id="fInStock" ${inStock ? 'checked' : ''} onchange="applyFilters()" style="accent-color:var(--accent)">
+            <span>В наличии</span>
+        </label>
+        <select id="fOrdering" onchange="applyFilters()" class="filter-dropdown-btn" style="cursor:pointer">
+            <option value="" ${ordering === '' ? 'selected' : ''}>Сначала новые</option>
+            <option value="price" ${ordering === 'price' ? 'selected' : ''}>Сначала дешёвые</option>
+            <option value="-price" ${ordering === '-price' ? 'selected' : ''}>Сначала дорогие</option>
+            <option value="name" ${ordering === 'name' ? 'selected' : ''}>По названию</option>
+        </select>
+        ${chips.length ? `<button type="button" class="filters-bar-reset" onclick="resetFilters()"><i class="fas fa-times"></i> Сбросить</button>` : ''}`;
+
+    container.innerHTML = `
+        <div class="filters-bar">${html}</div>
+        ${chips.length ? `
+            <div class="active-filters">
+                ${chips.map(c => `
+                    <span class="filter-chip">
+                        ${esc(c.label)}
+                        <button type="button" data-key="${esc(c.key)}" data-value="${esc(c.value)}" onclick="removeChip(this)" aria-label="Убрать фильтр">&times;</button>
+                    </span>`).join('')}
+            </div>` : ''}`;
+}
+
+function toggleDropdown(btn) {
+    const panel = btn.nextElementSibling;
+    const isOpen = panel.classList.contains('open');
+
+    document.querySelectorAll('.filter-dropdown-panel.open').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.filter-dropdown-btn.open').forEach(b => b.classList.remove('open'));
+
+    if (!isOpen) {
+        panel.classList.add('open');
+        btn.classList.add('open');
+    }
+}
+
+// Закрываем открытый дропдаун при клике вне его
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.filter-dropdown')) {
+        document.querySelectorAll('.filter-dropdown-panel.open').forEach(p => p.classList.remove('open'));
+        document.querySelectorAll('.filter-dropdown-btn.open').forEach(b => b.classList.remove('open'));
+    }
+});
+
+function clearFilterParams(urlParams) {
+    [...urlParams.keys()].forEach(key => {
+        if (key.startsWith('attr_')) urlParams.delete(key);
+    });
+    ['brand_slug', ...EXTRA_FILTER_KEYS].forEach(k => urlParams.delete(k));
+    urlParams.delete('page');
+}
+
+function applyFilters() {
+    const urlParams = new URLSearchParams(window.location.search);
+    clearFilterParams(urlParams);
+    urlParams.delete('ordering');
+
+    document.querySelectorAll('#filtersContainer input[data-attr]:checked').forEach(cb => {
+        urlParams.append(`attr_${cb.dataset.attr}`, cb.value);
+    });
+    document.querySelectorAll('#filtersContainer input[data-brand]:checked').forEach(cb => {
+        urlParams.append('brand_slug', cb.value);
+    });
+    const pMin = document.getElementById('fPriceMin');
+    const pMax = document.getElementById('fPriceMax');
+    if (pMin && Number(pMin.value) > 0) urlParams.set('price_min', pMin.value);
+    if (pMax && Number(pMax.value) > 0) urlParams.set('price_max', pMax.value);
+    const stock = document.getElementById('fInStock');
+    if (stock && stock.checked) urlParams.set('in_stock', 'true');
+    const ord = document.getElementById('fOrdering');
+    if (ord && ord.value) urlParams.set('ordering', ord.value);
+
+    window.location.href = `/?${urlParams.toString()}`;
+}
+
+function removeChip(btn) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const key = btn.dataset.key, value = btn.dataset.value;
+    urlParams.delete('page');
+    if (key === 'price') {
+        urlParams.delete('price_min');
+        urlParams.delete('price_max');
+    } else if (value) {
+        const remaining = urlParams.getAll(key).filter(v => v !== value);
+        urlParams.delete(key);
+        remaining.forEach(v => urlParams.append(key, v));
+    } else {
+        urlParams.delete(key);
+    }
+    window.location.href = `/?${urlParams.toString()}`;
+}
+
+function resetFilters() {
+    const urlParams = new URLSearchParams(window.location.search);
+    clearFilterParams(urlParams);
+    window.location.href = `/?${urlParams.toString()}`;
+}
+
+// ============================================
+// СТАРТ
+// ============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (isPlainHome()) document.getElementById('bentoBanner').hidden = false;
+    loadProducts();
+    loadFilters();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Заказ оформлен — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div style="max-width:600px;margin:60px auto;text-align:center;background:white;padding:50px;border-radius:15px;box-shadow:0 5px 25px rgba(0,0,0,0.08);">
+        <div style="font-size:80px;color:#27ae60;margin-bottom:20px;">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <h1 style="color:#2c3e50;margin-bottom:15px;">Спасибо за заказ!</h1>
+        <p style="color:#555;font-size:16px;margin-bottom:10px;" id="orderInfo">Загрузка...</p>
+        <p style="color:#95a5a6;font-size:14px;margin-bottom:30px;">
+            Чек можно скачать в PDF. Следить за статусом заказа можно в личном кабинете.
+        </p>
+        
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+            <button class="btn-primary" style="width:auto;padding:12px 25px;" onclick="downloadReceipt(ORDER_ID, this)">
+                <i class="fas fa-file-pdf"></i> Скачать чек
+            </button>
+            <a href="/orders/" class="btn-primary" style="width:auto;padding:12px 25px;text-decoration:none;">
+                <i class="fas fa-box"></i> Мои заказы
+            </a>
+            <a href="/" class="btn-cancel" style="text-decoration:none;padding:12px 25px;display:inline-flex;align-items:center;gap:8px;">
+                <i class="fas fa-shopping-bag"></i> В каталог
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+const ORDER_ID = {{ order_id }};
+
+async function loadOrderInfo() {
+    const result = await apiRequest(`/orders/${ORDER_ID}/`);
+    if (result && result.ok) {
+        const o = result.data;
+        document.getElementById('orderInfo').innerHTML = 
+            `Заказ <b>№ ${esc(o.order_number)}</b> на сумму <b>${parseFloat(o.total_amount).toLocaleString('ru-RU')} ₽</b>`;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadOrderInfo);
+</script>
+{% endblock %}

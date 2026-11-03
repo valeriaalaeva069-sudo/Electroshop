@@ -1,0 +1,162 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ site.site_name }}{% endblock %}</title>
+    {% if site.icon %}<link rel="icon" href="{{ site.icon.url }}">{% else %}<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%235B3DF5'/%3E%3Cpath d='M36 8 16 36h14l-4 20 22-30H34z' fill='white'/%3E%3C/svg%3E">{% endif %}
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome (иконки) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Шрифт -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Наш CSS (bento.css — накладка с новым дизайном, убери строку — вернётся старый вид) -->
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/bento.css' %}">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<header class="header">
+    <div class="container header-content">
+        <a href="/" class="logo">{% if site.icon %}<img src="{{ site.icon.url }}" alt="" class="logo-img">{% else %}<i class="fas {{ site.fa_icon }}"></i>{% endif %} {{ site.site_name }}</a>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Искать товары...">
+            <button type="button" id="searchBtn"><i class="fas fa-search"></i></button>
+        </div>
+
+        <div class="header-actions">
+            <a href="/cart/" class="btn-cart">
+                <i class="fas fa-shopping-cart"></i>
+                <span class="cart-badge hidden" id="cartBadge">0</span>
+            </a>
+            <a href="/admin-panel/" class="btn-icon" id="adminLink" title="Админ-панель" style="display:none;">
+                <i class="fas fa-user-shield"></i>
+            </a>
+            <div class="user-menu" id="userMenu"></div>
+        </div>
+    </div>
+</header>
+
+<nav class="categories-nav">
+    <div class="container">
+        <ul class="categories-list" id="categoriesList">
+            <li><a href="/" class="category-link">Все товары</a></li>
+        </ul>
+    </div>
+</nav>
+
+<main class="main-content">
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+    <div class="container">
+        {% if site.has_contacts %}
+        <div class="footer-contacts">
+            <div class="footer-note"><i class="fas fa-triangle-exclamation"></i> {{ site.error_note }}</div>
+            {% include "_contacts.html" %}
+        </div>
+        {% endif %}
+        <p>&copy; 2026 {{ site.site_name }} — учебный проект · <a href="/contacts/">Контакты</a></p>
+    </div>
+</footer>
+
+<!-- Модальное окно подтверждения -->
+<div class="modal-overlay" id="confirmModal">
+    <div class="modal-box">
+        <h3 id="modalTitle">Подтверждение</h3>
+        <p id="modalMessage"></p>
+        <div class="modal-buttons">
+            <button class="btn-cancel" id="modalCancel">Отмена</button>
+            <button class="btn-confirm" id="modalConfirm">Ок</button>
+        </div>
+    </div>
+</div>
+
+<!-- Тосты -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+{{ site_contact|json_script:"siteContact" }}
+
+<!-- Наши скрипты -->
+<script src="{% static 'js/main.js' %}"></script>
+
+<script>
+// ============================================
+// АВТОРИЗАЦИЯ И ШАПКА (без innerHTML — имя пользователя не исполняется как HTML)
+// ============================================
+(function initHeader() {
+    var user = null, token = null;
+    try {
+        user = JSON.parse(localStorage.getItem('user') || 'null');
+        token = localStorage.getItem('access_token');
+    } catch (e) {}
+
+    var userMenu = document.getElementById('userMenu');
+    var adminLink = document.getElementById('adminLink');
+    if (!userMenu) return;
+
+    function el(tag, cls, html) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (html) n.innerHTML = html;   // только наши статичные иконки
+        return n;
+    }
+
+    if (token && user) {
+        var profile = el('a', 'btn-icon', '<i class="fas fa-user-circle"></i>');
+        profile.href = '/profile/';
+        profile.title = 'Профиль';
+        var name = el('span', 'user-name');
+        name.textContent = user.full_name || user.email || '';
+        profile.appendChild(name);
+
+        var out = el('button', 'btn-icon', '<i class="fas fa-sign-out-alt"></i>');
+        out.type = 'button';
+        out.title = 'Выйти';
+        out.addEventListener('click', doLogout);
+
+        userMenu.appendChild(profile);
+        userMenu.appendChild(out);
+
+        if ((user.role === 'admin' || user.is_superuser === true) && adminLink) {
+            adminLink.style.display = 'inline-flex';
+        }
+    } else {
+        var cartLink = document.querySelector('.btn-cart');
+        if (cartLink) cartLink.style.display = 'none';
+        var login = el('a', 'btn-login', '<i class="fas fa-sign-in-alt"></i> Войти');
+        login.href = '/login/';
+        userMenu.appendChild(login);
+    }
+})();
+
+// ============================================
+// ВЫХОД
+// ============================================
+function doLogout() {
+    showConfirm('Вы точно хотите выйти?', function () {
+        localStorage.clear();
+        window.location.href = '/';
+    }, 'Выход из системы');
+}
+</script>
+
+{% block extra_js %}{% endblock %}
+
+</body>
+</html>

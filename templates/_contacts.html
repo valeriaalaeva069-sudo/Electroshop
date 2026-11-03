@@ -1,0 +1,7 @@
+<ul class="contact-list">
+    {% if site.contact_phone %}<li><i class="fas fa-phone"></i> <a href="tel:{{ site.phone_href }}">{{ site.contact_phone }}</a></li>{% endif %}
+    {% if site.contact_email %}<li><i class="fas fa-envelope"></i> <a href="mailto:{{ site.contact_email }}">{{ site.contact_email }}</a></li>{% endif %}
+    {% if site.contact_telegram %}<li><i class="fab fa-telegram"></i> <a href="{{ site.telegram_href }}" target="_blank" rel="noopener">{{ site.contact_telegram }}</a></li>{% endif %}
+    {% if site.contact_address %}<li><i class="fas fa-location-dot"></i> {{ site.contact_address }}</li>{% endif %}
+    {% if site.working_hours %}<li><i class="fas fa-clock"></i> {{ site.working_hours }}</li>{% endif %}
+</ul>

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Корзина — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="page-title">
+        <i class="fas fa-shopping-cart"></i> Корзина
+    </h1>
+    
+    <div id="cartContent">
+        <div class="loading">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p>Загрузка корзины...</p>
+        </div>
+    </div>
+    
+    <div id="cartEmpty" style="display:none;" class="empty-cart">
+        <i class="fas fa-shopping-cart fa-5x"></i>
+        <h2>Корзина пуста</h2>
+        <p>Добавьте товары из каталога</p>
+        <a href="/" class="btn-primary" style="display:inline-block; width:auto; padding:12px 30px; text-decoration:none;">
+            Перейти в каталог
+        </a>
+    </div>
+</div>
+
+<script>
+// Названия товаров для подтверждения удаления: id позиции → название
+let cartItemNames = {};
+
+// ============================================
+// ЗАГРУЗКА КОРЗИНЫ
+// ============================================
+
+async function loadCart() {
+    const container = document.getElementById('cartContent');
+    const empty = document.getElementById('cartEmpty');
+    
+    if (!isAuthenticated()) {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-user-lock fa-5x"></i>
+                <h2>Войдите в систему</h2>
+                <p>Чтобы просматривать корзину, нужно войти</p>
+                <a href="/login/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    Войти
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    const result = await apiRequest('/cart/');
+    
+    if (!result || !result.ok) {
+        container.innerHTML = '<p class="text-center">Ошибка загрузки корзины</p>';
+        return;
+    }
+    
+    const cart = result.data;
+    
+    if (!cart.items || cart.items.length === 0) {
+        container.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+    }
+    
+    container.style.display = 'block';
+    empty.style.display = 'none';
+    cartItemNames = Object.fromEntries(cart.items.map(i => [i.id, i.product.name]));
+    
+    container.innerHTML = `
+        <div class="cart-layout">
+            <div class="cart-items">
+                ${cart.items.map(item => `
+                    <div class="cart-item">
+                        <div class="cart-item-image">
+                            ${item.product.main_image_url 
+                                ? `<img src="${esc(item.product.main_image_url)}" alt="${esc(item.product.name)}">`
+                                : '<i class="fas fa-image"></i>'
+                            }
+                        </div>
+                        <div class="cart-item-info">
+                            <h3>${esc(item.product.name)}</h3>
+                            <p class="cart-item-brand">${esc(item.product.brand_name || '')}</p>
+                            <p class="cart-item-price">${parseFloat(item.product.price).toLocaleString('ru-RU')} ₽</p>
+                        </div>
+                        <div class="cart-item-quantity">
+                            <button onclick="changeQuantity(${Number(item.id)}, ${Number(item.quantity) - 1})">−</button>
+                            <span>${Number(item.quantity)}</span>
+                            <button onclick="changeQuantity(${Number(item.id)}, ${Number(item.quantity) + 1})">+</button>
+                        </div>
+                        <div class="cart-item-subtotal">
+                            ${parseFloat(item.subtotal).toLocaleString('ru-RU')} ₽
+                        </div>
+                        <button class="cart-item-remove" onclick="removeItem(${Number(item.id)})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <div class="cart-summary">
+                <h3>Итого</h3>
+                <div class="summary-row">
+                    <span>Товаров:</span>
+                    <span>${Number(cart.total_items)} шт.</span>
+                </div>
+                <div class="summary-row total">
+                    <span>Сумма:</span>
+                    <span>${parseFloat(cart.total_price).toLocaleString('ru-RU')} ₽</span>
+                </div>
+                
+                <button class="btn-primary" onclick="window.location.href='/checkout/'">
+                    <i class="fas fa-credit-card"></i> Оформить заказ
+                </button>
+                
+                <button class="btn-clear-cart" onclick="clearCart()">
+                    <i class="fas fa-trash"></i> Очистить корзину
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// ============================================
+// ИЗМЕНЕНИЕ КОЛИЧЕСТВА
+// ============================================
+
+async function changeQuantity(itemId, newQuantity) {
+    if (newQuantity < 1) {
+        return;
+    }
+    
+    const result = await apiRequest(`/cart/items/${itemId}/`, {
+        method: 'PUT',
+        body: JSON.stringify({ quantity: newQuantity }),
+    });
+    
+    if (result && result.ok) {
+        loadCart();
+        updateCartBadge();
+    } else {
+        const error = result?.data?.error || 'Ошибка';
+        showToast('Ошибка', error, 'error');
+    }
+}
+
+// ============================================
+// УДАЛЕНИЕ ТОВАРА
+// ============================================
+
+function removeItem(itemId) {
+    const productName = cartItemNames[itemId] || 'товар';
+    showConfirm(
+        `Удалить "${productName}" из корзины?`,
+        async () => {
+            const result = await apiRequest(`/cart/items/${itemId}/remove/`, {
+                method: 'DELETE',
+            });
+            
+            if (result && result.ok) {
+                showToast('Успешно', 'Товар удалён из корзины', 'success');
+                loadCart();
+                updateCartBadge();
+            }
+        },
+        'Удаление товара'
+    );
+}
+
+// ============================================
+// ОЧИСТКА КОРЗИНЫ
+// ============================================
+
+function clearCart() {
+    showConfirm(
+        'Вы уверены, что хотите очистить всю корзину?',
+        async () => {
+            const result = await apiRequest('/cart/clear/', {
+                method: 'POST',
+            });
+            
+            if (result && result.ok) {
+                showToast('Успешно', 'Корзина очищена', 'success');
+                loadCart();
+                updateCartBadge();
+            }
+        },
+        'Очистка корзины'
+    );
+}
+
+document.addEventListener('DOMContentLoaded', loadCart);
+</script>
+{% endblock %}

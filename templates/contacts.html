@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Контакты — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="info-card">
+        <div class="info-icon"><i class="fas fa-headset"></i></div>
+        <h1>Контакты</h1>
+        <p class="info-text">{{ site.error_note }}</p>
+        {% include "_contacts.html" %}
+        <a href="/" class="btn-primary info-btn"><i class="fas fa-arrow-left"></i> На главную</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Оплата заказа — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="page-title"><i class="fas fa-credit-card"></i> Оплата заказа</h1>
+    
+    <div id="paymentContent">
+        <div class="loading">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p>Загрузка...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+const ORDER_ID = {{ order_id }};
+let payButtonHtml = '';
+
+async function loadPayment() {
+    const container = document.getElementById('paymentContent');
+    
+    // Загружаем заказ
+    const result = await apiRequest(`/orders/${ORDER_ID}/`);
+    
+    if (!result || !result.ok) {
+        container.innerHTML = '<h2>Заказ не найден</h2>';
+        return;
+    }
+    
+    const order = result.data;
+    
+    if (order.status_name === 'Отменён') {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-times-circle fa-5x" style="color:#c0392b;"></i>
+                <h2>Заказ отменён</h2>
+                <p>Оплатить отменённый заказ нельзя</p>
+                <a href="/orders/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    Мои заказы
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    if (order.payment_method !== 'card') {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-hand-holding-usd fa-5x"></i>
+                <h2>Оплата при получении</h2>
+                <p>Этот заказ оплачивается курьеру или в пункте выдачи — онлайн платить не нужно</p>
+                <a href="/orders/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    Мои заказы
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    if (order.payment_status) {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-check-circle fa-5x" style="color:#27ae60;"></i>
+                <h2>Заказ уже оплачен</h2>
+                <a href="/orders/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    Мои заказы
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="checkout-layout">
+            <div>
+                <div class="checkout-section">
+                    <h2><i class="fas fa-credit-card"></i> Данные карты</h2>
+                    
+                    <div class="form-group">
+                        <label>Номер карты *</label>
+                        <input type="text" id="card_number" placeholder="0000 0000 0000 0000" 
+                               maxlength="19" required
+                               oninput="formatCardNumber(this)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Владелец карты *</label>
+                        <input type="text" id="card_holder" placeholder="IVAN IVANOV" required
+                               oninput="this.value = this.value.toUpperCase()">
+                    </div>
+                    
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                        <div class="form-group">
+                            <label>Срок действия *</label>
+                            <input type="text" id="expiry" placeholder="MM/YY" maxlength="5" required
+                                   oninput="formatExpiry(this)">
+                        </div>
+                        <div class="form-group">
+                            <label>CVV *</label>
+                            <input type="password" id="cvv" placeholder="•••" maxlength="4" required>
+                        </div>
+                    </div>
+                    
+                    <div style="background:#f0f8ff;padding:15px;border-radius:8px;margin-top:20px;font-size:13px;color:#555;">
+                        <i class="fas fa-info-circle" style="color:#3498db;"></i>
+                        <b>Тестовые карты:</b><br>
+                        Успешная оплата: <b>4111 1111 1111 1111</b><br>
+                        Отклонённая карта: <b>4444 4444 4444 4444</b><br>
+                        Любые MM/YY и CVV подойдут.
+                    </div>
+                    
+                    <button class="btn-primary" onclick="processPayment(this)" style="margin-top:20px;">
+                        <i class="fas fa-lock"></i> Оплатить ${parseFloat(order.total_amount).toLocaleString('ru-RU')} ₽
+                    </button>
+                </div>
+            </div>
+            
+            <div class="cart-summary">
+                <h3>Заказ № ${esc(order.order_number)}</h3>
+                <div class="summary-row">
+                    <span>Позиций:</span>
+                    <span>${Number(order.items_count)}</span>
+                </div>
+                <div class="summary-row">
+                    <span>Сумма:</span>
+                    <span>${parseFloat(order.total_amount).toLocaleString('ru-RU')} ₽</span>
+                </div>
+                <div class="summary-row total">
+                    <span>К оплате:</span>
+                    <span>${parseFloat(order.total_amount).toLocaleString('ru-RU')} ₽</span>
+                </div>
+                
+                <div style="text-align:center;margin-top:20px;color:#95a5a6;font-size:12px;">
+                    <i class="fas fa-shield-alt"></i> Безопасная оплата
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function formatCardNumber(input) {
+    let value = input.value.replace(/\s/g, '').replace(/\D/g, '');
+    value = value.substring(0, 16);
+    input.value = value.replace(/(.{4})/g, '$1 ').trim();
+}
+
+function formatExpiry(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length >= 2) {
+        value = value.substring(0, 2) + '/' + value.substring(2, 4);
+    }
+    input.value = value;
+}
+
+async function processPayment(btn) {
+    if (!payButtonHtml) payButtonHtml = btn.innerHTML;  // запоминаем «Оплатить N ₽»
+    const cardNumber = document.getElementById('card_number').value;
+    const cardHolder = document.getElementById('card_holder').value;
+    const expiry = document.getElementById('expiry').value;
+    const cvv = document.getElementById('cvv').value;
+    
+    if (!cardNumber || !cardHolder || !expiry || !cvv) {
+        showToast('Ошибка', 'Заполните все поля', 'error');
+        return;
+    }
+    
+    // Показываем загрузку
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Обработка...';
+    
+    const result = await apiRequest('/payments/process/', {
+        method: 'POST',
+        body: JSON.stringify({
+            order_id: ORDER_ID,
+            card_number: cardNumber.replace(/\s/g, ''),
+            card_holder: cardHolder,
+            expiry: expiry,
+            cvv: cvv,
+        }),
+    });
+    
+    if (result && result.ok) {
+        showToast('Успешно!', 'Платёж проведён', 'success');
+        setTimeout(() => {
+            window.location.href = `/order-success/${ORDER_ID}/`;
+        }, 1500);
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = payButtonHtml;
+        
+        const error = result?.data?.error || 'Ошибка оплаты';
+        showToast('Ошибка оплаты', error, 'error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadPayment);
+</script>
+{% endblock %}

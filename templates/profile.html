@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Профиль — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="profile-header">
+        <div class="profile-avatar" id="profileAvatar">
+            <i class="fas fa-user"></i>
+        </div>
+        <div class="profile-info">
+            <h1 id="profileName">Загрузка...</h1>
+            <p id="profileEmail"></p>
+            <p id="profileMeta"></p>
+        </div>
+    </div>
+    
+    <div class="profile-tabs">
+        <button class="profile-tab active" onclick="showTab('data', this)">
+            <i class="fas fa-user-edit"></i> Мои данные
+        </button>
+        <button class="profile-tab" onclick="showTab('password', this)">
+            <i class="fas fa-key"></i> Смена пароля
+        </button>
+        <button class="profile-tab" onclick="showTab('orders', this)">
+            <i class="fas fa-box"></i> Мои заказы
+        </button>
+    </div>
+    
+    <!-- Вкладка: Данные -->
+    <div id="tab-data" class="tab-content">
+        <div class="form-container" style="margin:0;max-width:100%;">
+            <form id="profileForm">
+                <div class="form-group">
+                    <label>ФИО</label>
+                    <input type="text" id="full_name" required>
+                </div>
+                <div class="form-group">
+                    <label>Город</label>
+                    <input type="text" id="city">
+                </div>
+                <div class="form-group">
+                    <label>Возраст</label>
+                    <input type="number" id="age" min="1" max="120">
+                </div>
+                <div class="form-group">
+                    <label>Телефон</label>
+                    <input type="text" id="phone">
+                </div>
+                <div class="form-group">
+                    <label>Email (логин)</label>
+                    <input type="email" id="email" disabled style="background:#f5f7fa;">
+                </div>
+                <button type="submit" class="btn-primary" style="width:auto;padding:12px 30px;">
+                    <i class="fas fa-save"></i> Сохранить
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Вкладка: Пароль -->
+    <div id="tab-password" class="tab-content" style="display:none;">
+        <div class="form-container" style="margin:0;max-width:100%;">
+            <form id="passwordForm">
+                <div class="form-group">
+                    <label>Старый пароль</label>
+                    <input type="password" id="old_password" required>
+                </div>
+                <div class="form-group">
+                    <label>Новый пароль (минимум 8 символов, не только цифры)</label>
+                    <input type="password" id="new_password" required minlength="8" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Подтверждение нового пароля</label>
+                    <input type="password" id="new_password2" required minlength="8" autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn-primary" style="width:auto;padding:12px 30px;">
+                    <i class="fas fa-key"></i> Сменить пароль
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Вкладка: Заказы -->
+    <div id="tab-orders" class="tab-content" style="display:none;">
+        <div id="ordersInProfile">
+            <div class="loading"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showTab(tab, btn) {
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.profile-tab').forEach(el => el.classList.remove('active'));
+    
+    document.getElementById(`tab-${tab}`).style.display = 'block';
+    btn.classList.add('active');
+    
+    if (tab === 'orders') {
+        loadOrdersInProfile();
+    }
+}
+
+async function loadProfile() {
+    const result = await apiRequest('/auth/profile/');
+    
+    if (!result || !result.ok) {
+        window.location.href = '/login/';
+        return;
+    }
+    
+    const u = result.data;
+    
+    document.getElementById('profileName').textContent = u.full_name;
+    document.getElementById('profileEmail').textContent = u.email;
+    document.getElementById('profileMeta').textContent = 
+        [u.city, u.age ? `${u.age} лет` : '', u.phone].filter(Boolean).join(' • ') || 'Профиль не заполнен';
+    
+    document.getElementById('full_name').value = u.full_name || '';
+    document.getElementById('city').value = u.city || '';
+    document.getElementById('age').value = u.age || '';
+    document.getElementById('phone').value = u.phone || '';
+    document.getElementById('email').value = u.email || '';
+    
+    if (u.avatar) {
+        document.getElementById('profileAvatar').innerHTML = 
+            `<img src="${esc(u.avatar)}" alt="${esc(u.full_name)}">`;
+    }
+}
+
+document.getElementById('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const result = await apiRequest('/auth/profile/', {
+        method: 'PATCH',
+        body: JSON.stringify({
+            full_name: document.getElementById('full_name').value,
+            city: document.getElementById('city').value,
+            age: document.getElementById('age').value || null,
+            phone: document.getElementById('phone').value,
+        }),
+    });
+    
+    if (result && result.ok) {
+        showToast('Успешно!', 'Данные сохранены', 'success');
+        setUser(result.data);
+        loadProfile();
+    } else {
+        showToast('Ошибка', 'Не удалось сохранить', 'error');
+    }
+});
+
+document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const p1 = document.getElementById('new_password').value;
+    const p2 = document.getElementById('new_password2').value;
+    
+    if (p1 !== p2) {
+        showToast('Ошибка', 'Пароли не совпадают', 'error');
+        return;
+    }
+    
+    const result = await apiRequest('/auth/password/change/', {
+        method: 'POST',
+        body: JSON.stringify({
+            old_password: document.getElementById('old_password').value,
+            new_password: p1,
+            new_password2: p2,
+        }),
+    });
+    
+    if (result && result.ok) {
+        showToast('Успешно!', 'Пароль изменён', 'success');
+        document.getElementById('passwordForm').reset();
+    } else {
+        let err = 'Ошибка смены пароля';
+        if (result?.data) {
+            const errors = Object.values(result.data).flat();
+            if (errors.length) err = errors.join(', ');
+        }
+        showToast('Ошибка', err, 'error');
+    }
+});
+
+async function loadOrdersInProfile() {
+    const container = document.getElementById('ordersInProfile');
+    const result = await apiRequestAll('/orders/');
+    
+    if (!result || !result.ok) {
+        container.innerHTML = '<p>Ошибка загрузки</p>';
+        return;
+    }
+    
+    const orders = result.data;
+    
+    if (!orders.length) {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-box-open fa-4x"></i>
+                <h2>У вас пока нет заказов</h2>
+                <a href="/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">В каталог</a>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = orders.map(o => `
+        <div class="order-card">
+            <div class="order-header">
+                <div>
+                    <div class="order-number">№ ${esc(o.order_number)}</div>
+                    <div class="order-date">${new Date(o.created_at).toLocaleString('ru-RU')}</div>
+                </div>
+                <div>
+                    <span class="order-status-badge" style="background:${safeColor(o.status_color)};">${esc(o.status_name)}</span>
+                </div>
+                <div class="order-total">${parseFloat(o.total_amount).toLocaleString('ru-RU')} ₽</div>
+            </div>
+            <div style="color:#555;font-size:14px;">
+                Товаров: <b>${Number(o.items_count)}</b>
+            </div>
+        </div>
+    `).join('');
+}
+
+document.addEventListener('DOMContentLoaded', loadProfile);
+</script>
+{% endblock %}

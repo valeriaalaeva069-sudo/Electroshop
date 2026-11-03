@@ -1,0 +1,716 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель — ElectroShop</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome (иконки) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Шрифт -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Наш CSS (bento.css — накладка с новым дизайном, убери строку — вернётся старый вид) -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/bento.css">
+
+    
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+/* ===== Админка в стиле bento ===== */
+.adm-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin:26px 0 18px; }
+.adm-head h1 { font-size:34px; margin:0; display:flex; align-items:center; gap:12px; }
+.adm-head h1 i { width:46px; height:46px; border-radius:16px; background:var(--accent); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:19px; }
+
+.adm-tabs { display:flex; gap:8px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:6px; overflow-x:auto; scrollbar-width:none; }
+.adm-tabs a { display:inline-flex; align-items:center; gap:8px; padding:10px 18px; border-radius:999px; color:var(--ink); text-decoration:none; font-size:14px; font-weight:500; white-space:nowrap; transition:.2s; }
+.adm-tabs a:hover { background:var(--accent-soft); color:var(--accent); }
+.adm-tabs a.active { background:var(--ink); color:#fff; }
+
+.admin-section { display:none; }
+.admin-section.active { display:block; }
+.adm-title { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+.adm-title h2 { font-size:26px; margin:0; }
+
+.period-selector { display:inline-flex; gap:4px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:5px; margin-bottom:18px; flex-wrap:wrap; }
+.period-btn { border:none; background:transparent; padding:8px 18px; border-radius:999px; font-family:inherit; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer; transition:.2s; }
+.period-btn:hover { background:var(--accent-soft); color:var(--accent); }
+.period-btn.active { background:var(--accent); color:#fff; }
+
+/* сетка плиток */
+.a-grid { display:grid; grid-template-columns:repeat(4,1fr); grid-auto-rows:120px; grid-auto-flow:dense; gap:16px; margin-bottom:16px; }
+.a-tile { border-radius:var(--r-lg); padding:20px 22px; display:flex; flex-direction:column; justify-content:space-between; position:relative; overflow:hidden; }
+.a-tile .a-label { font-size:13px; font-weight:500; opacity:.75; display:flex; align-items:center; gap:8px; }
+.a-tile .a-label i { width:28px; height:28px; border-radius:10px; background:rgba(255,255,255,.6); display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
+.a-tile .a-value { font-size:30px; font-weight:800; letter-spacing:-.03em; line-height:1; }
+.a-tile.big { grid-column:span 2; grid-row:span 2; background:var(--accent); color:#fff; padding:28px; }
+.a-tile.big .a-label i { background:rgba(255,255,255,.18); }
+.a-tile.big .a-value { font-size:52px; }
+.a-tile.big .a-sub { font-size:14px; opacity:.85; display:flex; gap:22px; flex-wrap:wrap; }
+.a-tile.big .a-sub b { font-size:20px; display:block; letter-spacing:-.02em; }
+.a-tile.wide { grid-column:span 2; }
+.a-tile.peach { background:var(--peach); } .a-tile.mint { background:var(--mint); }
+.a-tile.sky { background:var(--sky); }     .a-tile.sun { background:var(--sun); }
+.a-tile.rose { background:var(--rose); }   .a-tile.lilac { background:var(--accent-soft); }
+.a-tile.dark { background:var(--ink); color:#fff; }
+.a-tile.dark .a-label i { background:rgba(255,255,255,.14); }
+
+/* карточки с графиками */
+.a-card { background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); padding:24px; }
+.a-card h3 { font-size:17px; margin:0 0 4px; }
+.a-card .a-hint { font-size:12px; color:var(--muted); margin-bottom:14px; }
+.a-card.span-4 { grid-column:span 4; grid-row:span 3; }
+.a-card.span-2 { grid-column:span 2; grid-row:span 4; }
+.a-card.span-4t { grid-column:span 4; grid-row:auto; }
+.chart-box { position:relative; height:calc(100% - 46px); min-height:0; }
+.chart-box canvas { max-height:100%; }
+
+/* таблицы */
+.admin-table { width:100%; border-collapse:separate; border-spacing:0; background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; }
+.admin-table th { background:var(--bg); color:var(--muted); padding:14px 18px; text-align:left; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; }
+.admin-table td { padding:14px 18px; border-top:1px solid var(--line); font-size:14px; vertical-align:middle; }
+.admin-table tbody tr:hover { background:#FAF9FF; }
+.table-wrap { overflow-x:auto; border-radius:var(--r-lg); }
+.pill { display:inline-block; padding:5px 12px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
+.pill.ok { background:var(--mint); color:#0F6B45; } .pill.off { background:var(--rose); color:#A61B3B; }
+.status-select { padding:8px 14px; border:1px solid var(--line); border-radius:999px; background:var(--bg); font-family:inherit; font-size:13px; color:var(--ink); cursor:pointer; }
+.status-select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+.btn-sm { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:12px; background:var(--accent-soft); color:var(--accent) !important; text-decoration:none; transition:.2s; }
+.btn-sm:hover { background:var(--accent); color:#fff !important; }
+.a-btn { display:inline-flex; align-items:center; gap:8px; padding:12px 22px; border:none; border-radius:999px; background:var(--ink); color:#fff !important; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; transition:.2s; }
+.a-btn:hover { background:var(--accent); }
+.a-btn.soft { background:var(--accent-soft); color:var(--accent) !important; }
+.a-btn.soft:hover { background:var(--accent); color:#fff !important; }
+.a-btn.green { background:#1E9E68; } .a-btn.green:hover { background:#16805A; }
+.a-btn.red { background:#D93B45; }
+
+.report-grid { display:grid; grid-template-columns:1.2fr 1fr; gap:16px; }
+.report-grid .a-card p { color:var(--muted); font-size:14px; }
+.date-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0 6px; }
+.date-row label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-weight:500; }
+.date-row input { width:100%; padding:11px 14px; border:1px solid var(--line); border-radius:var(--r-sm); background:var(--bg); font-family:inherit; }
+.btn-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+.empty-line { background:#fff; border:1px dashed #C9C2E3; border-radius:var(--r-lg); padding:40px; text-align:center; color:var(--muted); }
+
+@media (max-width:1000px) {
+  .a-grid { grid-template-columns:repeat(2,1fr); }
+  .a-card.span-4, .a-card.span-4t { grid-column:span 2; }
+  .a-card.span-2 { grid-column:span 2; }
+  .a-card.span-4 { grid-row:span 3; } .a-card.span-2 { grid-row:span 4; }
+  .a-tile.big .a-value { font-size:40px; }
+  .report-grid { grid-template-columns:1fr; }
+}
+@media (max-width:520px) { .adm-head h1 { font-size:26px; } .a-tile .a-value { font-size:24px; } }
+</style>
+
+</head>
+<body>
+
+<header class="header">
+    <div class="container header-content">
+        <a href="/" class="logo"><i class="fas fa-bolt"></i> ElectroShop</a>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Искать товары...">
+            <button type="button" id="searchBtn"><i class="fas fa-search"></i></button>
+        </div>
+
+        <div class="header-actions">
+            <a href="/cart/" class="btn-cart">
+                <i class="fas fa-shopping-cart"></i>
+                <span class="cart-badge hidden" id="cartBadge">0</span>
+            </a>
+            <a href="/admin-panel/" class="btn-icon" id="adminLink" title="Админ-панель" style="display:none;">
+                <i class="fas fa-user-shield"></i>
+            </a>
+            <div class="user-menu" id="userMenu"></div>
+        </div>
+    </div>
+</header>
+
+<nav class="categories-nav">
+    <div class="container">
+        <ul class="categories-list" id="categoriesList">
+            <li><a href="/" class="category-link">Все товары</a></li>
+        </ul>
+    </div>
+</nav>
+
+<main class="main-content">
+    
+<div class="container">
+    <div class="adm-head">
+        <h1><i class="fas fa-chart-line"></i> Админ-панель</h1>
+        <nav class="adm-tabs" id="admTabs">
+            <a href="#" class="active" data-section="dashboard"><i class="fas fa-gauge-high"></i> Дашборд</a>
+            <a href="#" data-section="orders"><i class="fas fa-box"></i> Заказы</a>
+            <a href="#" data-section="products"><i class="fas fa-cube"></i> Товары</a>
+            <a href="#" data-section="users"><i class="fas fa-users"></i> Пользователи</a>
+            <a href="#" data-section="reports"><i class="fas fa-file-export"></i> Отчёты</a>
+        </nav>
+    </div>
+
+    <!-- ДАШБОРД -->
+    <div id="section-dashboard" class="admin-section active">
+        <div class="period-selector">
+            <button class="period-btn" data-period="today">Сегодня</button>
+            <button class="period-btn" data-period="week">Неделя</button>
+            <button class="period-btn active" data-period="month">Месяц</button>
+            <button class="period-btn" data-period="year">Год</button>
+        </div>
+
+        <div class="a-grid" id="statsCards">
+            <div class="loading" style="grid-column:1/-1;"><i class="fas fa-spinner fa-spin"></i></div>
+        </div>
+
+        <div class="a-grid">
+            <div class="a-card span-4">
+                <h3>Выручка</h3>
+                <div class="a-hint" id="revenueHint">Отменённые заказы не учитываются</div>
+                <div class="chart-box"><canvas id="revenueChart" aria-label="График выручки по периодам"></canvas></div>
+            </div>
+            <div class="a-card span-2">
+                <h3>Заказы по статусам</h3>
+                <div class="a-hint">Доля каждого статуса</div>
+                <div class="chart-box"><canvas id="statusChart" aria-label="Заказы по статусам"></canvas></div>
+            </div>
+            <div class="a-card span-2">
+                <h3>Топ-5 товаров</h3>
+                <div class="a-hint">Продано штук</div>
+                <div class="chart-box"><canvas id="topProductsChart" aria-label="Пять самых продаваемых товаров"></canvas></div>
+            </div>
+        </div>
+
+        <div class="a-card">
+            <h3>Категории</h3>
+            <div class="a-hint">Сколько товаров, сколько продано и на какую сумму</div>
+            <div id="categoriesTable" class="table-wrap"></div>
+        </div>
+    </div>
+
+    <!-- ЗАКАЗЫ -->
+    <div id="section-orders" class="admin-section">
+        <div class="adm-title">
+            <h2>Управление заказами</h2>
+            <button class="a-btn" onclick="loadAdminOrders()"><i class="fas fa-rotate"></i> Обновить</button>
+        </div>
+        <div id="adminOrdersList"><div class="loading"><i class="fas fa-spinner fa-spin"></i></div></div>
+    </div>
+
+    <!-- ТОВАРЫ -->
+    <div id="section-products" class="admin-section">
+        <div class="adm-title">
+            <h2>Управление товарами</h2>
+            <a href="/admin/products/product/add/" target="_blank" class="a-btn"><i class="fas fa-plus"></i> Добавить товар</a>
+        </div>
+        <div id="adminProductsList"><div class="loading"><i class="fas fa-spinner fa-spin"></i></div></div>
+    </div>
+
+    <!-- ПОЛЬЗОВАТЕЛИ -->
+    <div id="section-users" class="admin-section">
+        <div class="adm-title"><h2>Пользователи</h2></div>
+        <div id="adminUsersList"></div>
+    </div>
+
+    <!-- ОТЧЁТЫ -->
+    <div id="section-reports" class="admin-section">
+        <div class="adm-title"><h2>Экспорт отчётов</h2></div>
+        <div class="report-grid">
+            <div class="a-card">
+                <h3>Отчёт за период</h3>
+                <p>Выбери даты и формат выгрузки.</p>
+                <div class="date-row">
+                    <div><label for="reportStart">Начало</label><input type="date" id="reportStart"></div>
+                    <div><label for="reportEnd">Конец</label><input type="date" id="reportEnd"></div>
+                </div>
+                <div class="btn-row">
+                    <button class="a-btn green" onclick="downloadReport('excel')"><i class="fas fa-file-excel"></i> Excel</button>
+                    <button class="a-btn red" onclick="downloadReport('pdf')"><i class="fas fa-file-pdf"></i> PDF</button>
+                </div>
+            </div>
+            <div class="a-card">
+                <h3>Быстрые отчёты</h3>
+                <p>Готовые выгрузки в один клик.</p>
+                <div class="btn-row">
+                    <button class="a-btn soft" onclick="quickReport('excel','today')">Excel · Сегодня</button>
+                    <button class="a-btn soft" onclick="quickReport('excel','week')">Excel · Неделя</button>
+                    <button class="a-btn soft" onclick="quickReport('excel','month')">Excel · Месяц</button>
+                    <button class="a-btn soft" onclick="quickReport('pdf','month')">PDF · Месяц</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPeriod = 'month';
+let revenueChart = null, statusChart = null, topChart = null;
+
+// Палитра графиков (проверена валидатором: контраст между соседями, дальтонизм)
+const CHART_COLORS = ['#5B3DF5', '#1E9E68', '#D9820B', '#3B7BE8', '#D93B45', '#8E78F0'];
+const GRID = '#EEEBF6', INK = '#1F1B2E', MUTED = '#6F6A80';
+
+if (window.Chart) {
+    Chart.defaults.font.family = "'Geologica', 'Segoe UI', sans-serif";
+    Chart.defaults.color = MUTED;
+    Chart.defaults.borderColor = GRID;
+    Chart.defaults.plugins.tooltip.backgroundColor = INK;
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.cornerRadius = 10;
+}
+
+// Экранирование текста, пришедшего с сервера
+function esc(v) {
+    return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const money = (v) => parseFloat(v || 0).toLocaleString('ru-RU') + ' ₽';
+const validColor = (c) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c || '');
+
+// Проверка прав админа
+function checkAdmin() {
+    const user = getUser();
+    if (!user || (user.role !== 'admin' && !user.is_superuser)) {
+        showToast('Доступ запрещён', 'Только для администраторов', 'error');
+        setTimeout(() => window.location.href = '/', 1000);
+        return false;
+    }
+    return true;
+}
+
+function showSection(name) {
+    document.querySelectorAll('.admin-section').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('#admTabs a').forEach(el => el.classList.toggle('active', el.dataset.section === name));
+    document.getElementById(`section-${name}`).classList.add('active');
+
+    if (name === 'orders') loadAdminOrders();
+    else if (name === 'products') loadAdminProducts();
+    else if (name === 'users') loadAdminUsers();
+}
+
+function changePeriod(period) {
+    currentPeriod = period;
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+    loadDashboard();
+}
+
+async function loadDashboard() {
+    await Promise.all([loadStats(), loadRevenueChart(), loadStatusChart(), loadTopProductsChart(), loadCategoriesTable()]);
+}
+
+// ===== ДАШБОРД: плитки =====
+async function loadStats() {
+    const result = await apiRequest(`/analytics/dashboard/?period=${currentPeriod}`);
+    if (!result || !result.ok) return;
+    const s = result.data;
+    const avg = s.total_orders ? parseFloat(s.total_revenue) / s.total_orders : 0;
+
+    const small = (cls, icon, label, value) => `
+        <div class="a-tile ${cls}">
+            <div class="a-label"><i class="fas ${icon}"></i>${label}</div>
+            <div class="a-value">${value}</div>
+        </div>`;
+
+    document.getElementById('statsCards').innerHTML = `
+        <div class="a-tile big">
+            <div class="a-label"><i class="fas fa-ruble-sign"></i>Выручка за период</div>
+            <div class="a-value">${money(s.total_revenue)}</div>
+            <div class="a-sub">
+                <div><b>${s.total_orders}</b>заказов за период</div>
+                <div><b>${money(avg)}</b>средний чек</div>
+            </div>
+        </div>
+        ${small('peach', 'fa-shopping-bag', 'Заказов', s.total_orders)}
+        ${small('mint', 'fa-users', 'Пользователей', s.total_users)}
+        ${small('sky', 'fa-cube', 'Товаров', s.total_products)}
+        ${small('sun', 'fa-clock', 'В обработке', s.pending_orders)}
+        ${small('lilac', 'fa-check', 'Завершено', s.completed_orders)}
+        ${small('rose', 'fa-calendar-day', 'Заказов сегодня', s.orders_today)}
+        ${small('dark wide', 'fa-money-bill-wave', 'Выручка сегодня', money(s.revenue_today))}
+    `;
+}
+
+// ===== ДАШБОРД: графики =====
+async function loadRevenueChart() {
+    const result = await apiRequest(`/analytics/revenue/?period=${currentPeriod}`);
+    if (!result || !result.ok) return;
+    const data = result.data;
+    const ctx = document.getElementById('revenueChart');
+    if (!ctx) return;
+    if (revenueChart) revenueChart.destroy();
+
+    revenueChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.period),
+            datasets: [{
+                label: 'Выручка',
+                data: data.map(d => parseFloat(d.revenue)),
+                borderColor: CHART_COLORS[0],
+                backgroundColor: 'rgba(91, 61, 245, 0.10)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.35,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: CHART_COLORS[0],
+                pointHoverBorderColor: '#fff',
+                pointHoverBorderWidth: 2,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (c) => ' ' + money(c.parsed.y) } },
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+                y: { beginAtZero: true, border: { display: false }, ticks: { callback: (v) => v.toLocaleString('ru-RU') } },
+            },
+        },
+    });
+}
+
+async function loadStatusChart() {
+    const result = await apiRequest('/analytics/order-statuses/');
+    if (!result || !result.ok) return;
+    const data = result.data.filter(d => d.count > 0);
+    const ctx = document.getElementById('statusChart');
+    if (!ctx) return;
+    if (statusChart) statusChart.destroy();
+
+    statusChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.status_name),
+            datasets: [{
+                data: data.map(d => d.count),
+                // цвета в фиксированном порядке из общей палитры, а не «какие пришли с сервера»
+                backgroundColor: data.map((d, i) => CHART_COLORS[i % CHART_COLORS.length]),
+                borderColor: '#fff', borderWidth: 3, hoverOffset: 6,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, cutout: '62%',
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', padding: 14, color: INK } },
+            },
+        },
+    });
+}
+
+async function loadTopProductsChart() {
+    const result = await apiRequest('/analytics/top-products/?limit=5');
+    if (!result || !result.ok) return;
+    const data = result.data;
+    const ctx = document.getElementById('topProductsChart');
+    if (!ctx) return;
+    if (topChart) topChart.destroy();
+
+    topChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.product_name.length > 22 ? d.product_name.slice(0, 22) + '…' : d.product_name),
+            datasets: [{
+                label: 'Продано, шт',
+                data: data.map(d => d.total_sold),
+                backgroundColor: CHART_COLORS[0],
+                borderRadius: 6, borderSkipped: false, barThickness: 16,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { beginAtZero: true, border: { display: false }, ticks: { precision: 0 } },
+                y: { grid: { display: false }, ticks: { color: INK } },
+            },
+        },
+    });
+}
+
+async function loadCategoriesTable() {
+    const result = await apiRequest('/analytics/categories/');
+    if (!result || !result.ok) return;
+    const data = result.data;
+
+    if (!data.length) {
+        document.getElementById('categoriesTable').innerHTML = '<div class="empty-line">Пока нет данных</div>';
+        return;
+    }
+    document.getElementById('categoriesTable').innerHTML = `
+        <table class="admin-table">
+            <thead><tr><th>Категория</th><th>Товаров</th><th>Продано</th><th>Выручка</th></tr></thead>
+            <tbody>
+                ${data.map(c => `
+                    <tr>
+                        <td><b>${esc(c.category_name)}</b></td>
+                        <td>${esc(c.products_count)}</td>
+                        <td>${esc(c.total_sold)}</td>
+                        <td><b>${money(c.total_revenue)}</b></td>
+                    </tr>`).join('')}
+            </tbody>
+        </table>`;
+}
+
+// ===== ЗАКАЗЫ =====
+async function loadAdminOrders() {
+    const box = document.getElementById('adminOrdersList');
+    const result = await apiRequest('/orders/');
+    if (!result || !result.ok) { box.innerHTML = '<div class="empty-line">Не удалось загрузить заказы</div>'; return; }
+
+    const orders = result.data.results || result.data;
+    if (!orders.length) { box.innerHTML = '<div class="empty-line">Заказов пока нет</div>'; return; }
+
+    const statusesResult = await apiRequest('/order-statuses/');
+    const statuses = (statusesResult && statusesResult.data) || [];
+
+    box.innerHTML = `
+        <div class="table-wrap"><table class="admin-table">
+            <thead><tr><th>№ заказа</th><th>Дата</th><th>Сумма</th><th>Статус</th><th>Изменить статус</th></tr></thead>
+            <tbody>
+                ${orders.map(o => {
+                    const c = validColor(o.status_color) ? o.status_color : '#5B3DF5';
+                    return `
+                    <tr>
+                        <td><b>${esc(o.order_number)}</b></td>
+                        <td>${new Date(o.created_at).toLocaleDateString('ru-RU')}</td>
+                        <td><b>${money(o.total_amount)}</b></td>
+                        <td><span class="pill" style="background:color-mix(in srgb, ${c} 16%, white);color:${c};">${esc(o.status_name)}</span></td>
+                        <td>
+                            <select class="status-select" data-order="${Number(o.id)}">
+                                <option value="">— Выбрать —</option>
+                                ${statuses.map(s => `<option value="${esc(s.name)}" ${s.name === o.status_name ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+                            </select>
+                        </td>
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table></div>`;
+}
+
+async function updateOrderStatus(orderId, statusName) {
+    if (!statusName) return;
+
+    showConfirm(`Изменить статус заказа на "${statusName}"?`, async () => {
+        const result = await apiRequest(`/orders/${orderId}/status/`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: statusName }),
+        });
+
+        if (result && result.ok) {
+            showToast('Успешно!', 'Статус обновлён', 'success');
+        } else {
+            showToast('Ошибка', 'Не удалось обновить статус', 'error');
+        }
+        loadAdminOrders();
+    }, 'Обновление статуса');
+}
+
+// ===== ТОВАРЫ =====
+async function loadAdminProducts() {
+    const box = document.getElementById('adminProductsList');
+    // админский эндпоинт: показывает и скрытые товары
+    const result = await apiRequest('/admin/products/');
+    if (!result || !result.ok) { box.innerHTML = '<div class="empty-line">Не удалось загрузить товары</div>'; return; }
+
+    const products = result.data.results || result.data;
+    if (!products.length) { box.innerHTML = '<div class="empty-line">Товаров пока нет</div>'; return; }
+
+    box.innerHTML = `
+        <div class="table-wrap"><table class="admin-table">
+            <thead><tr><th>Название</th><th>Цена</th><th>Остаток</th><th>Категория</th><th>Статус</th><th></th></tr></thead>
+            <tbody>
+                ${products.map(p => `
+                    <tr>
+                        <td><b>${esc(p.name)}</b></td>
+                        <td>${money(p.price)}</td>
+                        <td>${Number(p.stock_quantity)} шт.</td>
+                        <td>${esc(p.category_name || '—')}</td>
+                        <td><span class="pill ${p.is_active ? 'ok' : 'off'}">${p.is_active ? 'Активен' : 'Скрыт'}</span></td>
+                        <td>
+                            <a href="/admin/products/product/${Number(p.id)}/change/" target="_blank" class="btn-sm" title="Редактировать">
+                                <i class="fas fa-pen"></i>
+                            </a>
+                        </td>
+                    </tr>`).join('')}
+            </tbody>
+        </table></div>`;
+}
+
+// ===== ПОЛЬЗОВАТЕЛИ =====
+function loadAdminUsers() {
+    document.getElementById('adminUsersList').innerHTML = `
+        <div class="a-card">
+            <h3>Управление пользователями</h3>
+            <p style="color:var(--muted);margin:6px 0 16px;">Роли, блокировка и данные аккаунтов настраиваются в Django-админке.</p>
+            <a href="/admin/users/customuser/" target="_blank" class="a-btn"><i class="fas fa-arrow-up-right-from-square"></i> Открыть в админке</a>
+        </div>`;
+}
+
+// ===== ОТЧЁТЫ =====
+function downloadReport(format) {
+    const start = document.getElementById('reportStart').value;
+    const end = document.getElementById('reportEnd').value;
+    if (!start || !end) { showToast('Ошибка', 'Выберите период', 'error'); return; }
+    downloadFile(`${API_URL}/analytics/export/${format}/?start_date=${start}&end_date=${end}`);
+}
+
+function quickReport(format, period) {
+    downloadFile(`${API_URL}/analytics/export/${format}/?period=${period}`);
+}
+
+async function downloadFile(url) {
+    try {
+        const response = await fetch(url, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+        if (!response.ok) { showToast('Ошибка', 'Не удалось скачать отчёт', 'error'); return; }
+
+        const blob = await response.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'report';
+        if (disposition) {
+            const match = disposition.match(/filename="?([^"]+)"?/);
+            if (match) filename = match[1];
+        }
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('Успешно!', 'Отчёт скачан', 'success');
+    } catch (e) {
+        showToast('Ошибка', 'Не удалось скачать', 'error');
+    }
+}
+
+// ===== ИНИЦИАЛИЗАЦИЯ =====
+document.addEventListener('DOMContentLoaded', () => {
+    if (!checkAdmin()) return;
+
+    document.getElementById('admTabs').addEventListener('click', (e) => {
+        const a = e.target.closest('a[data-section]');
+        if (!a) return;
+        e.preventDefault();
+        showSection(a.dataset.section);
+    });
+    document.querySelector('.period-selector').addEventListener('click', (e) => {
+        const b = e.target.closest('.period-btn');
+        if (b) changePeriod(b.dataset.period);
+    });
+    document.getElementById('adminOrdersList').addEventListener('change', (e) => {
+        const sel = e.target.closest('.status-select');
+        if (sel) updateOrderStatus(Number(sel.dataset.order), sel.value);
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    document.getElementById('reportStart').value = monthAgo;
+    document.getElementById('reportEnd').value = today;
+
+    loadDashboard();
+});
+</script>
+
+</main>
+
+<footer class="footer">
+    <div class="container">
+        <p>&copy; 2026 ElectroShop — учебный проект</p>
+    </div>
+</footer>
+
+<!-- Модальное окно подтверждения -->
+<div class="modal-overlay" id="confirmModal">
+    <div class="modal-box">
+        <h3 id="modalTitle">Подтверждение</h3>
+        <p id="modalMessage"></p>
+        <div class="modal-buttons">
+            <button class="btn-cancel" id="modalCancel">Отмена</button>
+            <button class="btn-confirm" id="modalConfirm">Ок</button>
+        </div>
+    </div>
+</div>
+
+<!-- Тосты -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Наши скрипты -->
+<script src="/static/js/main.js"></script>
+
+<script>
+// ============================================
+// АВТОРИЗАЦИЯ И ШАПКА (без innerHTML — имя пользователя не исполняется как HTML)
+// ============================================
+(function initHeader() {
+    var user = null, token = null;
+    try {
+        user = JSON.parse(localStorage.getItem('user') || 'null');
+        token = localStorage.getItem('access_token');
+    } catch (e) {}
+
+    var userMenu = document.getElementById('userMenu');
+    var adminLink = document.getElementById('adminLink');
+    if (!userMenu) return;
+
+    function el(tag, cls, html) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (html) n.innerHTML = html;   // только наши статичные иконки
+        return n;
+    }
+
+    if (token && user) {
+        var profile = el('a', 'btn-icon', '<i class="fas fa-user-circle"></i>');
+        profile.href = '/profile/';
+        profile.title = 'Профиль';
+        var name = el('span', 'user-name');
+        name.textContent = user.full_name || user.email || '';
+        profile.appendChild(name);
+
+        var out = el('button', 'btn-icon', '<i class="fas fa-sign-out-alt"></i>');
+        out.type = 'button';
+        out.title = 'Выйти';
+        out.addEventListener('click', doLogout);
+
+        userMenu.appendChild(profile);
+        userMenu.appendChild(out);
+
+        if ((user.role === 'admin' || user.is_superuser === true) && adminLink) {
+            adminLink.style.display = 'inline-flex';
+        }
+    } else {
+        var login = el('a', 'btn-login', '<i class="fas fa-sign-in-alt"></i> Войти');
+        login.href = '/login/';
+        userMenu.appendChild(login);
+    }
+})();
+
+// ============================================
+// ВЫХОД
+// ============================================
+function doLogout() {
+    showConfirm('Вы точно хотите выйти?', function () {
+        localStorage.clear();
+        window.location.href = '/';
+    }, 'Выход из системы');
+}
+</script>
+
+
+
+</body>
+</html>

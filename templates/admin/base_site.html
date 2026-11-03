@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site.site_name }} — админ-панель{% endblock %}
+
+{% block extrastyle %}{{ block.super }}
+{% if site.icon %}<link rel="icon" href="{{ site.icon.url }}">{% else %}<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%235B3DF5'/%3E%3Cpath d='M36 8 16 36h14l-4 20 22-30H34z' fill='white'/%3E%3C/svg%3E">{% endif %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="{% static 'css/admin_theme.css' %}">
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        {% if site.icon %}<img src="{{ site.icon.url }}" alt="" class="brand-img">{% else %}<i class="fas {{ site.fa_icon }} brand-icon"></i>{% endif %}
+        {{ site.site_name }}
+    </a>
+    <span class="brand-sub">админ-панель</span>
+</h1>
+{% endblock %}
+
+{% block userlinks %}
+<a href="/" class="to-site"><i class="fas fa-store"></i> На сайт</a>
+<a href="/admin-panel/"><i class="fas fa-chart-line"></i> Статистика</a>
+{% if user.has_usable_password %}<a href="{% url 'admin:password_change' %}">Сменить пароль</a>{% endif %}
+<form id="logout-form" method="post" action="{% url 'admin:logout' %}">{% csrf_token %}<button type="submit">Выйти</button></form>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

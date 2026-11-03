@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Мои заказы — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="page-title">
+        <i class="fas fa-box"></i> Мои заказы
+    </h1>
+    
+    <div id="ordersContent">
+        <div class="loading">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p>Загрузка...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+const STATUS_STEPS = ['Оформлен', 'Оплачен', 'В сборке', 'Собран', 'В пути', 'Доставлен', 'Получен'];
+
+async function loadOrders() {
+    const container = document.getElementById('ordersContent');
+    
+    if (!isAuthenticated()) {
+        window.location.href = '/login/';
+        return;
+    }
+    
+    // все страницы, а не только первые 20 заказов
+    const result = await apiRequestAll('/orders/');
+    
+    if (!result || !result.ok) {
+        container.innerHTML = '<p class="text-center">Ошибка загрузки</p>';
+        return;
+    }
+    
+    const orders = result.data;
+    
+    if (!orders.length) {
+        container.innerHTML = `
+            <div class="empty-cart">
+                <i class="fas fa-box-open fa-5x"></i>
+                <h2>У вас пока нет заказов</h2>
+                <p>Оформите первый заказ в нашем магазине</p>
+                <a href="/" class="btn-primary" style="display:inline-block;width:auto;padding:12px 30px;text-decoration:none;">
+                    Перейти в каталог
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = orders.map(order => renderOrder(order)).join('');
+}
+
+function renderOrder(order) {
+    const currentStepIndex = STATUS_STEPS.indexOf(order.status_name);
+    const isCancelled = order.status_name === 'Отменён';
+    
+    const progressHTML = isCancelled 
+        ? `<div style="text-align:center;padding:15px;background:#ffe5e5;border-radius:8px;color:#c0392b;font-weight:bold;">
+             <i class="fas fa-times-circle"></i> Заказ отменён
+           </div>`
+        : `<div class="order-progress">
+            ${STATUS_STEPS.map((step, i) => {
+                let className = 'progress-step';
+                if (i < currentStepIndex) className += ' completed';
+                else if (i === currentStepIndex) className += ' active';
+                return `
+                    <div class="${className}">
+                        <div class="progress-step-dot">
+                            ${i < currentStepIndex ? '<i class="fas fa-check"></i>' : i + 1}
+                        </div>
+                        <div class="progress-step-label">${esc(step)}</div>
+                    </div>
+                `;
+            }).join('')}
+           </div>`;
+    
+    return `
+        <div class="order-card" data-order-id="${Number(order.id)}">
+            <div class="order-header">
+                <div>
+                    <div class="order-number">№ ${esc(order.order_number)}</div>
+                    <div class="order-date">
+                        <i class="fas fa-calendar"></i> ${new Date(order.created_at).toLocaleString('ru-RU')}
+                    </div>
+                </div>
+                <div>
+                    <span class="order-status-badge" style="background:${safeColor(order.status_color)};">
+                        ${esc(order.status_name)}
+                    </span>
+                </div>
+                <div class="order-total">${parseFloat(order.total_amount).toLocaleString('ru-RU')} ₽</div>
+            </div>
+            
+            ${progressHTML}
+            
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px;color:#555;font-size:14px;">
+                <div><i class="fas fa-map-marker-alt"></i> ${esc(order.city)}, ${esc(order.address)}</div>
+                <div><i class="fas fa-box"></i> Товаров: <b>${Number(order.items_count)}</b></div>
+                <div><i class="fas fa-truck"></i> ${esc(DELIVERY_LABELS[order.delivery_method] || order.delivery_method)}</div>
+                <div><i class="fas fa-wallet"></i> ${esc(PAYMENT_LABELS[order.payment_method] || order.payment_method)}${order.payment_status ? ' · <b style="color:#27ae60;">оплачен</b>' : ''}</div>
+            </div>
+            
+            ${order.tracking_number ? `
+                <div style="margin-top:15px;padding:10px;background:#f5f7fa;border-radius:5px;">
+                    <i class="fas fa-search"></i> <b>Трек-номер:</b> ${esc(order.tracking_number)}
+                </div>
+            ` : ''}
+            
+            <div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn-primary" style="width:auto;padding:10px 20px;" onclick="showOrderDetail(${Number(order.id)})">
+                    <i class="fas fa-info-circle"></i> Подробнее
+                </button>
+                <button class="btn-primary" style="width:auto;padding:10px 20px;" onclick="downloadReceipt(${Number(order.id)}, this)">
+                    <i class="fas fa-file-pdf"></i> Чек (PDF)
+                </button>
+                ${needsPayment(order) ? `
+                    <a href="/payment/${Number(order.id)}/" class="btn-primary" style="width:auto;padding:10px 20px;text-decoration:none;">
+                        <i class="fas fa-credit-card"></i> Оплатить
+                    </a>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Заказ «картой онлайн», который ещё не оплачен и не отменён
+function needsPayment(order) {
+    return order.payment_method === 'card' && !order.payment_status && order.status_name !== 'Отменён';
+}
+
+async function showOrderDetail(orderId) {
+    const result = await apiRequest(`/orders/${orderId}/`);
+    
+    if (!result || !result.ok) {
+        showToast('Ошибка', 'Не удалось загрузить детали', 'error');
+        return;
+    }
+    
+    const order = result.data;
+    
+    const itemsHTML = (order.items || []).map(item => `
+        <tr>
+            <td style="padding:8px;border-bottom:1px solid #ecf0f1;">${esc(item.product_name)}</td>
+            <td style="padding:8px;border-bottom:1px solid #ecf0f1;text-align:center;">× ${Number(item.quantity)}</td>
+            <td style="padding:8px;border-bottom:1px solid #ecf0f1;text-align:right;font-weight:bold;">${parseFloat(item.price).toLocaleString('ru-RU')} ₽</td>
+        </tr>
+    `).join('');
+    
+    const historyHTML = (order.status_history || []).map(h => `
+        <div style="padding:8px 0;border-bottom:1px solid #ecf0f1;">
+            <div style="font-weight:bold;color:#2c3e50;">${esc(h.status_name)}</div>
+            <div style="font-size:12px;color:#95a5a6;">${new Date(h.changed_at).toLocaleString('ru-RU')} • ${esc(h.changed_by_name || 'Система')}</div>
+            ${h.comment ? `<div style="font-size:13px;color:#555;margin-top:3px;">${esc(h.comment)}</div>` : ''}
+        </div>
+    `).join('');
+    
+    // Создаём модальное окно
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+        <div class="modal-box" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+            <h3>Заказ № ${esc(order.order_number)}</h3>
+            <p style="color:#95a5a6;font-size:13px;">${new Date(order.created_at).toLocaleString('ru-RU')}</p>
+            
+            <h4 style="margin:15px 0 10px;color:#2c3e50;">📦 Товары</h4>
+            <table style="width:100%;border-collapse:collapse;">
+                ${itemsHTML}
+            </table>
+            <p style="text-align:right;margin-top:10px;font-size:18px;font-weight:bold;color:#e74c3c;">
+                Итого: ${parseFloat(order.total_amount).toLocaleString('ru-RU')} ₽
+            </p>
+            
+            <h4 style="margin:20px 0 10px;color:#2c3e50;">📍 Доставка</h4>
+            <p style="font-size:14px;color:#555;">${esc(order.city)}, ${esc(order.address)}</p>
+            
+            <h4 style="margin:20px 0 10px;color:#2c3e50;">📊 История статусов</h4>
+            ${historyHTML}
+            
+            <div class="modal-buttons" style="margin-top:20px;">
+                <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Закрыть</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+}
+
+// ============================================
+// ОБНОВЛЕНИЕ В РЕАЛЬНОМ ВРЕМЕНИ
+// ============================================
+
+// Общий сокет уведомлений подключается в main.js (один на пользователя, а не по
+// сокету на каждый заказ). Когда приходит уведомление про заказ — перерисовываем список.
+document.addEventListener('shop:notification', (e) => {
+    if (e.detail && e.detail.data && e.detail.data.order_id) loadOrders();
+});
+
+document.addEventListener('DOMContentLoaded', loadOrders);
+</script>
+{% endblock %}

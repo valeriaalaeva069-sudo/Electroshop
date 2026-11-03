@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}{{ code }} — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="info-card">
+        <div class="info-code">{{ code }}</div>
+        <h1>{{ heading }}</h1>
+        <p class="info-text">{{ text }}</p>
+        {% if site.has_contacts %}
+        <p class="info-text"><b>{{ site.error_note }}</b></p>
+        {% include "_contacts.html" %}
+        {% endif %}
+        <a href="/" class="btn-primary info-btn"><i class="fas fa-arrow-left"></i> На главную</a>
+    </div>
+</div>
+{% endblock %}

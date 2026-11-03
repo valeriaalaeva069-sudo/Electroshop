@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Товар — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div id="productContent">
+        <div class="loading">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p>Загрузка товара...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+const PRODUCT_SLUG = '{{ slug|escapejs }}';
+let currentProduct = null;
+
+async function loadProduct() {
+    const container = document.getElementById('productContent');
+    
+    const result = await apiRequest(`/products/${encodeURIComponent(PRODUCT_SLUG)}/`);
+    
+    if (!result || !result.ok) {
+        container.innerHTML = '<h2 class="text-center">Товар не найден</h2>';
+        return;
+    }
+    
+    const p = result.data;
+    currentProduct = p;
+    const specs = p.specifications || {};
+    const attributes = p.attributes || [];
+    const hasSpecs = attributes.length > 0 || Object.keys(specs).length > 0;
+    
+    container.innerHTML = `
+        <div class="breadcrumbs">
+            <a href="/">Главная</a> / 
+            <a href="/?category=${encodeURIComponent(p.category?.slug || '')}">${esc(p.category?.name || '')}</a> / 
+            <span>${esc(p.name)}</span>
+        </div>
+        
+        <div class="product-detail">
+            <div class="product-detail-image">
+                ${p.main_image 
+                    ? `<img src="${esc(p.main_image)}" alt="${esc(p.name)}">`
+                    : '<i class="fas fa-image fa-8x"></i>'
+                }
+            </div>
+            
+            <div class="product-detail-info">
+                <h1>${esc(p.name)}</h1>
+                
+                <div class="product-detail-brand">
+                    <i class="fas fa-tag"></i> ${esc(p.brand?.name || 'Без бренда')}
+                </div>
+                
+                <div class="product-detail-price">
+                    ${parseFloat(p.price).toLocaleString('ru-RU')} ₽
+                </div>
+                
+                <div class="product-detail-stock">
+                    ${p.in_stock 
+                        ? `<span class="in-stock"><i class="fas fa-check-circle"></i> В наличии (${Number(p.stock_quantity)} шт.)</span>`
+                        : `<span class="out-stock"><i class="fas fa-times-circle"></i> Нет в наличии</span>`
+                    }
+                </div>
+                
+                <div class="product-detail-description">
+                    <h3>Описание</h3>
+                    <!-- описание — HTML из редактора CKEditor в админке, поэтому без экранирования -->
+                    <div>${p.description || 'Описание отсутствует'}</div>
+                </div>
+                
+                ${hasSpecs ? `
+                    <div class="product-specs">
+                        <h3>Характеристики</h3>
+                        <table>
+                            ${attributes.map(a => `
+                                <tr>
+                                    <td>${esc(a.attribute_name)}</td>
+                                    <td>${esc(a.value)}</td>
+                                </tr>
+                            `).join('')}
+                            ${Object.entries(specs).map(([key, value]) => `
+                                <tr>
+                                    <td>${esc(key)}</td>
+                                    <td>${esc(value)}</td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                ` : ''}
+                
+                <div class="product-detail-actions">
+                    <div class="quantity-selector">
+                        <button onclick="decreaseQty()">−</button>
+                        <input type="number" id="quantityInput" value="1" min="1" max="${Number(p.stock_quantity)}">
+                        <button onclick="increaseQty(${Number(p.stock_quantity)})">+</button>
+                    </div>
+                    
+                    <button class="btn-add-cart-large" 
+                            onclick="addToCartDetail()"
+                            ${!p.in_stock ? 'disabled' : ''}>
+                        <i class="fas fa-cart-plus"></i>
+                        ${p.in_stock ? (isAuthenticated() ? 'Добавить в корзину' : 'Войти, чтобы купить') : 'Нет в наличии'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function increaseQty(max) {
+    const input = document.getElementById('quantityInput');
+    const current = parseInt(input.value);
+    if (current < max) input.value = current + 1;
+}
+
+function decreaseQty() {
+    const input = document.getElementById('quantityInput');
+    const current = parseInt(input.value);
+    if (current > 1) input.value = current - 1;
+}
+
+function addToCartDetail() {
+    if (!currentProduct) return;
+    const quantity = parseInt(document.getElementById('quantityInput').value, 10);
+    if (!(quantity >= 1)) {
+        showToast('Ошибка', 'Укажите количество', 'error');
+        return;
+    }
+    addToCart(currentProduct.id, quantity, currentProduct.name);
+}
+
+document.addEventListener('DOMContentLoaded', loadProduct);
+</script>
+{% endblock %}

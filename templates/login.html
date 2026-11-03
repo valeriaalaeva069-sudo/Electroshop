@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Вход — {{ site.site_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="form-container">
+        <h2 class="form-title">
+            <i class="fas fa-sign-in-alt"></i> Вход в систему
+        </h2>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required placeholder="your@email.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input type="password" id="password" name="password" required placeholder="••••••••">
+            </div>
+            
+            <button type="submit" class="btn-primary">
+                <i class="fas fa-sign-in-alt"></i> Войти
+            </button>
+        </form>
+        
+        <div class="form-link">
+            <a href="/password-reset/">Забыли пароль?</a>
+        </div>
+        
+        <div class="form-link">
+            Нет аккаунта? <a href="/register/">Зарегистрироваться</a>
+        </div>
+        
+        <div class="form-link">
+            <a href="/" class="btn-guest">
+                <i class="fas fa-user-secret"></i> Войти как гость
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    
+    const result = await apiRequest('/auth/login/', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+    });
+    
+    if (result && result.ok) {
+        setToken(result.data.tokens.access);
+        localStorage.setItem('refresh_token', result.data.tokens.refresh);
+        setUser(result.data.user);
+        
+        showToast('Успешно!', `Добро пожаловать, ${result.data.user.full_name}!`, 'success');
+        
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 800);
+    } else {
+        const error = result?.data?.non_field_errors?.[0] || 'Неверный email или пароль';
+        showToast('Ошибка входа', error, 'error');
+    }
+});
+</script>
+{% endblock %}
